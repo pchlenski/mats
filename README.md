@@ -8,5 +8,6 @@ conda activate sprint
 pip3 install torch torchvision torchaudio
 pip install transformer_lens transformers circuitsvis
 pip install matplotlib plotly networkx tqdm 
-pip install pytest
+pip install pytest gradio
+pip install -e .
 ```
