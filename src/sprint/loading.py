@@ -35,7 +35,7 @@ def load_data(
 
 
 def load_sae(run_id: str = "run1", use_cuda: bool = True, verbose: bool = True, **kwargs) -> AutoEncoder:
-    encoder = AutoEncoder.load_from_hf("run1")
+    encoder = AutoEncoder.load_from_hf(run_id)
     encoder = encoder.cuda() if use_cuda else encoder
     print(f"Encoder device: {next(encoder.parameters()).device}") if verbose else None
     return encoder
