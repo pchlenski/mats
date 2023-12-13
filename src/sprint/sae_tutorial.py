@@ -124,7 +124,8 @@ class AutoEncoder(nn.Module):
         return self
 
 
-# Utils
+# Utils:
+# Get reconstruction loss
 
 
 def replacement_hook(mlp_post, hook, encoder):
@@ -170,7 +171,7 @@ def get_recons_loss(all_tokens, model, num_batches=5, local_encoder=None):
     return score, loss, recons_loss, zero_abl_loss
 
 
-# Frequency
+# Get frequency
 @torch.no_grad()
 def get_freqs(all_tokens, model, num_batches=25, local_encoder=None):
     if local_encoder is None:
@@ -194,6 +195,7 @@ def get_freqs(all_tokens, model, num_batches=25, local_encoder=None):
     return act_freq_scores
 
 
+# Visualize feature utils
 def create_html(strings, values, max_value=None, saturation=0.5, allow_different_length=False, return_string=False):
     # escape strings to deal with tabs, newlines, etc.
     escaped_strings = [escape(s, quote=True) for s in strings]
@@ -312,6 +314,9 @@ def make_feature_vis_gradio(feature_id, encoder, model, starting_text=None, batc
     demos[0] = demo
 
 
+# Inspecting logits
+
+
 def process_token(s):
     if isinstance(s, torch.Tensor):
         s = s.item()
@@ -353,6 +358,9 @@ def create_vocab_df(logit_vec, model, make_probs=False, full_vocab=None):
 
 def list_flatten(nested_list):
     return [x for y in nested_list for x in y]
+
+
+# Make token dataframe
 
 
 def make_token_df(tokens, model, len_prefix=5, len_suffix=1):
