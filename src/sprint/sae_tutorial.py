@@ -390,18 +390,3 @@ def make_token_df(tokens, model, len_prefix=5, len_suffix=1):
             label=label,
         )
     )
-
-
-def load_all():
-    model = HookedTransformer.from_pretrained("gelu-1l")
-    model = model.cuda()
-    model = model.to(torch.float16)
-    print(f"Model device: {next(model.parameters()).device}")
-
-    # Get and tokenize data
-    data = load_dataset("NeelNanda/c4-code-20k", split="train")
-    tokenized_data = tokenize_and_concatenate(data, model.tokenizer, max_length=128).shuffle(42)
-    tokens = tokenized_data["tokens"]
-    tokens = tokens.cuda()
-    tokens = tokens.to(torch.int32)
-    print(f"Tokens shape: {tokens.shape}, dtype: {tokens.dtype}, device: {tokens.device}")
