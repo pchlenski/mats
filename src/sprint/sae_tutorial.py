@@ -4,48 +4,28 @@ This submodule is a pile of code from Neel's sparse autoencoder tutorial:
 https://colab.research.google.com/drive/1u8larhpxy8w4mMsJiSBddNOzFGj7_RTn?usp=sharing#scrollTo=JUtGmqx8Si-G
 """
 
-from transformer_lens import HookedTransformer, utils
-from transformer_lens.utils import tokenize_and_concatenate
 import pprint
 import tqdm
-from datasets import load_dataset
-import gradio as gr
-from html import escape
-import colorsys
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from IPython.display import display
-from functools import partial
+
 import numpy as np
 import pandas as pd
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-# Defining the autoencoder
-cfg = {
-    "seed": 49,
-    "batch_size": 4096,
-    "buffer_mult": 384,
-    "lr": 1e-4,
-    "num_tokens": int(2e9),
-    "l1_coeff": 3e-4,
-    "beta1": 0.9,
-    "beta2": 0.99,
-    "dict_mult": 8,
-    "seq_len": 128,
-    "d_mlp": 2048,
-    "enc_dtype": "fp32",
-    "remove_rare_dir": False,
-}
-cfg["model_batch_size"] = 64
-cfg["buffer_size"] = cfg["batch_size"] * cfg["buffer_mult"]
-cfg["buffer_batches"] = cfg["buffer_size"] // cfg["seq_len"]
+import colorsys
+from html import escape
+from IPython.display import display
+import gradio as gr
 
-DTYPES = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
+from transformer_lens import utils
 
-SPACE = "·"
-NEWLINE = "↩"
-TAB = "→"
+from functools import partial
+
+from .vars import DTYPES, SPACE, NEWLINE, TAB, SAE_CFG
+
+cfg = SAE_CFG
 
 
 class AutoEncoder(nn.Module):
