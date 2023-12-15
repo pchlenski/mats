@@ -3,11 +3,13 @@ import torch
 from datasets import load_dataset
 from transformer_lens import HookedTransformer, utils
 from transformer_lens.utils import tokenize_and_concatenate
+
 from .sae_tutorial import AutoEncoder
+from .vars import MODEL, RUN, DATASET
 
 
 def load_model(
-    model_name: str = "gelu-1l", use_cuda: bool = True, half_precision: bool = True, verbose: bool = True, **kwargs
+    model_name: str = MODEL, use_cuda: bool = True, half_precision: bool = True, verbose: bool = True, **kwargs
 ) -> HookedTransformer:
     model = HookedTransformer.from_pretrained(model_name)
     model = model.cuda() if use_cuda else model
@@ -18,7 +20,7 @@ def load_model(
 
 def load_data(
     model: HookedTransformer,
-    dataset_name: str = "NeelNanda/c4-code-20k",
+    dataset_name: str = DATASET,
     split: str = "train",
     max_length: int = 128,
     seed: int = 42,
@@ -34,7 +36,7 @@ def load_data(
     return tokens
 
 
-def load_sae(run_id: str = "run1", use_cuda: bool = True, verbose: bool = True, **kwargs) -> AutoEncoder:
+def load_sae(run_id: str = RUN, use_cuda: bool = True, verbose: bool = True, **kwargs) -> AutoEncoder:
     encoder = AutoEncoder.load_from_hf(run_id)
     encoder = encoder.cuda() if use_cuda else encoder
     print(f"Encoder device: {next(encoder.parameters()).device}") if verbose else None
