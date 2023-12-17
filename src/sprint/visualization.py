@@ -21,13 +21,20 @@ def visualize_topk(feature_id, n_examples, model=None, pad=True, clip=None):
             row_max = max_val_idx[i].item()
             ex_padded.append(
                 torch.cat(
-                    [torch.zeros(max_idx - row_max), ex[i].cpu(), torch.zeros(row_max - min_idx)],
-                    dtype=torch.int,
+                    [
+                        torch.zeros(max_idx - row_max, dtype=torch.int),
+                        ex[i].cpu(),
+                        torch.zeros(row_max - min_idx, dtype=torch.int),
+                    ]
                 )
             )
             vals_padded.append(
                 torch.cat(
-                    [torch.zeros(max_idx - row_max), val[i].cpu(), torch.zeros(row_max - min_idx)], dtype=torch.int
+                    [
+                        torch.zeros(max_idx - row_max, dtype=torch.int),
+                        val[i].cpu(),
+                        torch.zeros(row_max - min_idx, dtype=torch.int),
+                    ]
                 )
             )
 
