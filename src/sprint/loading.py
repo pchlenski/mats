@@ -36,9 +36,12 @@ def load_data(
     return tokens
 
 
-def load_sae(run_id: str = RUN, use_cuda: bool = True, verbose: bool = True, **kwargs) -> AutoEncoder:
+def load_sae(
+    run_id: str = RUN, use_cuda: bool = True, half_precision: bool = True, verbose: bool = True, **kwargs
+) -> AutoEncoder:
     encoder = AutoEncoder.load_from_hf(run_id)
     encoder = encoder.cuda() if use_cuda else encoder
+    model = encoder.to(torch.float16) if half_precision else model
     print(f"Encoder device: {next(encoder.parameters()).device}") if verbose else None
     return encoder
 

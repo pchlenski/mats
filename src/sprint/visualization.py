@@ -1,8 +1,13 @@
 import torch
 import pandas as pd
 import matplotlib.pyplot as plt
+
+from transformer_lens import utils
+
 from .feature_exploration import max_activating_examples
 from .loading import load_model
+from .sae_tutorial import process_tokens
+from .attention import get_attn_head_contribs
 
 
 def visualize_topk(feature_id, n_examples, model=None, pad=True, clip=None):
@@ -62,3 +67,38 @@ def visualize_topk(feature_id, n_examples, model=None, pad=True, clip=None):
     plt.xticks(range(df.shape[1]))
     plt.yticks(range(df.shape[0]))
     plt.tight_layout()
+
+
+def plot_head_token_contribs(contribs, tokens, dst, start=0, end=None, model=None):
+    if model is None:
+        model = load_model()
+    if end is None:
+        end = len(tokens)
+    if end < 0:
+        end = len(tokens) + end
+    token_strs = list(
+        map(lambda x: f"|{x}|", process_tokens(model.tokenizer.batch_decode(tokens)[start:end], model=model))
+    )
+
+    fig, ax = plt.subplots()
+    matimg = ax.matshow(contribs[0, :, dst, start:end].detach().cpu().numpy())
+    ax.set_xticks(range(end - start))
+    ax.set_xticklabels(token_strs, rotation=90)
+    fig.colorbar(matimg)
+    plt.show()
+
+
+def plot_head_token_contribs_for_prompt(model, prompt, dst, range_normal, layer=0, start=0, end=None, prepend_bos=True):
+    tokens = model.tokenizer(prompt).input_ids
+    _, cache = model.run_with_cache(
+        prompt,
+        stop_at_layer=1,
+        names_filter=[
+            utils.get_act_name("pattern", layer),
+            utils.get_act_name("v", layer),
+        ],
+        prepend_bos=prepend_bos,
+    )
+    contribs = get_attn_head_contribs(model, layer, range_normal, cache=cache)
+    plot_head_token_contribs(contribs, tokens, dst, start, end)
+    return contribs

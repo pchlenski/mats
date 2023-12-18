@@ -297,7 +297,7 @@ def make_feature_vis_gradio(feature_id, encoder, model, starting_text=None, batc
 # Inspecting logits
 
 
-def process_token(s):
+def process_token(s, model):
     if isinstance(s, torch.Tensor):
         s = s.item()
     if isinstance(s, np.int64):
@@ -310,20 +310,20 @@ def process_token(s):
     return s
 
 
-def process_tokens(l):
+def process_tokens(l, model):
     if isinstance(l, str):
         l = model.to_str_tokens(l)
     elif isinstance(l, torch.Tensor) and len(l.shape) > 1:
         l = l.squeeze(0)
-    return [process_token(s) for s in l]
+    return [process_token(s, model=model) for s in l]
 
 
-def process_tokens_index(l):
+def process_tokens_index(l, model):
     if isinstance(l, str):
         l = model.to_str_tokens(l)
     elif isinstance(l, torch.Tensor) and len(l.shape) > 1:
         l = l.squeeze(0)
-    return [f"{process_token(s)}/{i}" for i, s in enumerate(l)]
+    return [f"{process_token(s, model=model)}/{i}" for i, s in enumerate(l)]
 
 
 def create_vocab_df(logit_vec, model, make_probs=False, full_vocab=None):
@@ -344,7 +344,7 @@ def list_flatten(nested_list):
 
 
 def make_token_df(tokens, model, len_prefix=5, len_suffix=1):
-    str_tokens = [process_tokens(model.to_str_tokens(t)) for t in tokens]
+    str_tokens = [process_tokens(model.to_str_tokens(t), model=model) for t in tokens]
     unique_token = [[f"{s}/{i}" for i, s in enumerate(str_tok)] for str_tok in str_tokens]
 
     context = []
