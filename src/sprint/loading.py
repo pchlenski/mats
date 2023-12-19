@@ -29,8 +29,12 @@ def load_data(
     **kwargs,
 ) -> torch.Tensor:
     data = load_dataset(dataset_name, split=split)
-    tokenized_data = tokenize_and_concatenate(data, model.tokenizer, max_length=max_length).shuffle(seed)
-    tokens = tokenized_data["tokens"]
+    # If dataset name does not have "tokenized" in it, tokenize it:
+    if "tokenized" not in dataset_name:
+        tokenized_data = tokenize_and_concatenate(data, model.tokenizer, max_length=max_length).shuffle(seed)
+        tokens = tokenized_data["tokens"]
+    else:
+        tokens = data.shuffle(seed)
     tokens = tokens.cuda() if use_cuda else tokens
     print(f"Tokens shape: {tokens.shape}, dtype: {tokens.dtype}, device: {tokens.device}") if verbose else None
     return tokens
