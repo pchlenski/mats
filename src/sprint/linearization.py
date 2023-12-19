@@ -55,7 +55,7 @@ def analyze_linearized_feature(
     # Get cache
     _, cache = model.run_with_cache(
         data[:batch_size],
-        stop_at_layer=1,
+        # stop_at_layer=1,
         names_filter=[
             utils.get_act_name("post", layer),
             utils.get_act_name("resid_mid", layer),

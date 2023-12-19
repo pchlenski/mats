@@ -91,19 +91,21 @@ class AutoEncoder(nn.Module):
         version 47 is the final checkpoint of the second autoencoder run.
         """
         if version == "run1":
-            version = 25
+            hf_id = 25
         elif version == "run2":
-            version = 47
+            hf_id = 47
         elif version == "l0":
-            version = "gelu-2l_L0_16384_mlp_out_51"
+            hf_id = "gelu-2l_L0_16384_mlp_out_51"
         elif version == "l1":
-            version = "gelu-2l_L1_16384_mlp_out_50"
+            hf_id = "gelu-2l_L1_16384_mlp_out_50"
 
-        cfg = utils.download_file_from_hf("NeelNanda/sparse_autoencoder", f"{version}_cfg.json")
+        cfg = utils.download_file_from_hf("NeelNanda/sparse_autoencoder", f"{hf_id}_cfg.json")
+        if version in ["l0", "l1"]:
+            cfg["d_mlp"] = 512  # This was not encoded for some reason
         pprint.pprint(cfg)
         self = cls(cfg=cfg)
         self.load_state_dict(
-            utils.download_file_from_hf("NeelNanda/sparse_autoencoder", f"{version}.pt", force_is_torch=True)
+            utils.download_file_from_hf("NeelNanda/sparse_autoencoder", f"{hf_id}.pt", force_is_torch=True)
         )
         return self
 

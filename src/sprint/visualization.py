@@ -1,20 +1,25 @@
+from sprint.vars import BATCH_SIZE
 import torch
 import pandas as pd
 import matplotlib.pyplot as plt
+
+import plotly.graph_objects as go
+import plotly.express as px
 
 from transformer_lens import utils
 
 from .feature_exploration import max_activating_examples
 from .loading import load_model
-from .sae_tutorial import process_tokens
+from .sae_tutorial import process_tokens, process_token
 from .attention import get_attn_head_contribs
+from .vars import BATCH_SIZE
 
 
-def visualize_topk(feature_id, n_examples, model=None, pad=True, clip=None):
+def get_topk(feature_id, n_examples, model=None, pad=True, clip=None, evenly_spaced=False):
     if model is None:
         model = load_model()
 
-    ex, val = max_activating_examples(feature_id, n_examples, return_feature_values=True)
+    ex, val = max_activating_examples(feature_id, n_examples, return_feature_values=True, evenly_spaced=evenly_spaced)
 
     max_val_idx = val.argmax(dim=1)
     min_idx, max_idx = max_val_idx.min().item(), max_val_idx.max().item()
@@ -55,6 +60,11 @@ def visualize_topk(feature_id, n_examples, model=None, pad=True, clip=None):
     # Plot
     df = pd.DataFrame([[model.tokenizer.decode(x) for x in row] for row in ex])
 
+    return df, vals
+
+
+def visualize_topk(feature_id, n_examples, model=None, pad=True, clip=None):
+    df, vals = get_topk(feature_id, n_examples, model=model, pad=pad, clip=clip)
     fig = plt.figure(figsize=(df.shape[1], df.shape[0]))
     plt.imshow(vals, cmap="coolwarm", vmin=0)
     plt.colorbar()
@@ -67,6 +77,32 @@ def visualize_topk(feature_id, n_examples, model=None, pad=True, clip=None):
     plt.xticks(range(df.shape[1]))
     plt.yticks(range(df.shape[0]))
     plt.tight_layout()
+    return fig
+
+
+def visualize_topk_plotly(feature_id, n_examples, model=None, pad=True, clip=None):
+    df, vals = get_topk(feature_id, n_examples, model=model, pad=pad, clip=clip)
+
+    # Create Plotly figure
+    fig = go.Figure(
+        data=go.Heatmap(z=vals.numpy(), x=list(range(df.shape[1])), y=list(range(df.shape[0])), colorscale="rdbu")
+    )
+
+    # Add text annotations
+    for i, row in df.iterrows():
+        for j, token in enumerate(row):
+            if token not in ["", "", ""]:
+                fig.add_annotation(x=j, y=i, text=token, showarrow=False, xanchor="center", yanchor="middle")
+
+    # Update layout
+    fig.update_layout(
+        xaxis=dict(tickmode="array", tickvals=list(range(df.shape[1]))),
+        yaxis=dict(tickmode="array", tickvals=list(range(df.shape[0]))),
+        height=df.shape[0] * 40,  # Adjust height based on number of rows
+        width=df.shape[1] * 80,  # Adjust width based on number of columns
+    )
+
+    return fig
 
 
 def plot_head_token_contribs(contribs, tokens, dst, start=0, end=None, model=None):
@@ -102,3 +138,59 @@ def plot_head_token_contribs_for_prompt(model, prompt, dst, range_normal, layer=
     contribs = get_attn_head_contribs(model, layer, range_normal, cache=cache)
     plot_head_token_contribs(contribs, tokens, dst, start, end)
     return contribs
+
+
+def plot_attn_contribs_for_example(
+    model, data, example_idx, token_idx, feature_mid, start_token_idx=0, ov_only=False, layer=0, batch_size=BATCH_SIZE
+):
+    with torch.no_grad():
+        tokens = data[example_idx]
+        _, cache = model.run_with_cache(
+            tokens,
+            stop_at_layer=1,
+            names_filter=[
+                utils.get_act_name("pattern", 0),
+                utils.get_act_name("v", 0),
+            ],
+        )
+        if not ov_only:
+            attn_contribs = get_attn_head_contribs(
+                model=model, layer=layer, cache=cache, data=data, batch_size=batch_size, range_normal=feature_mid
+            )
+            attn_contribs_window = attn_contribs[0, :, token_idx, start_token_idx : token_idx + 1]
+        else:
+            attn_contribs = get_attn_head_contribs_ov(model, cache, 0, feature_mid)
+            attn_contribs_window = attn_contribs[0, :, start_token_idx : token_idx + 1]
+        print(attn_contribs_window.sum().item())
+        # fig = px.imshow(
+        #     utils.to_numpy(attn_contribs_window),
+        #     x=list(
+        #         map(
+        #             lambda x, i: f"|{process_token(x, model=model)}| pos {str(i)}",
+        #             model.tokenizer.batch_decode(tokens[start_token_idx : token_idx + 1]),
+        #             range(start_token_idx, token_idx + 1),
+        #         )
+        #     ),
+        #     color_continuous_midpoint=0,
+        # )
+        # fig.update_xaxes(tickangle=90)
+        fig = go.Figure(
+            data=go.Heatmap(
+                z=utils.to_numpy(attn_contribs_window),
+                x=list(
+                    map(
+                        lambda x, i: f"|{process_token(x, model=model)}| pos {str(i)}",
+                        model.tokenizer.batch_decode(tokens[start_token_idx : token_idx + 1]),
+                        range(start_token_idx, token_idx + 1),
+                    )
+                ),
+                colorscale="rdbu",
+            )
+        )
+        fig.update_layout(
+            xaxis=dict(tickmode="array", tickvals=list(range(token_idx - start_token_idx + 1))),
+            height=300,
+            width=token_idx - start_token_idx + 1,
+        )
+
+        return fig
