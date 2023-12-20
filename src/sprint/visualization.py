@@ -11,7 +11,7 @@ from transformer_lens import utils
 from .feature_exploration import max_activating_examples
 from .loading import load_model, load_data
 from .sae_tutorial import process_tokens, process_token
-from .attention import get_attn_head_contribs
+from .attention import get_attn_head_contribs, get_attn_head_contribs_ov
 from .vars import BATCH_SIZE
 
 
@@ -70,7 +70,7 @@ def visualize_topk(feature_id, n_examples, model=None, data=None, pad=True, clip
     df, val, c = get_topk(
         feature_id, n_examples, model=model, data=data, pad=pad, clip=clip, evenly_spaced=evenly_spaced
     )
-    fig = plt.figure(figsize=(df.shape[1], df.shape[0]))
+    fig = plt.figure(figsize=(df.shape[1] // 2, df.shape[0] // 2))
     ax = fig.add_subplot(111)
     ax.matshow(val, cmap="coolwarm", vmin=0)
 
@@ -78,7 +78,7 @@ def visualize_topk(feature_id, n_examples, model=None, data=None, pad=True, clip
     for i, (_, row) in enumerate(df.iterrows()):  # Hacky but I need indices
         for j, token in enumerate(row):
             if token not in ["<|EOS|>", "<|PAD|>", "<|BOS|>"]:
-                plt.text(j, i, token, ha="center", va="center", fontsize=10)
+                plt.text(j, i, token, ha="center", va="center", fontsize=8)
 
     ax.set_xticks(range(len(df.columns)), df.columns)
     ax.set_yticks(range(len(df.index)), [f"R={dfi}, C={ci}" for dfi, ci in zip(df.index, c)])
@@ -123,6 +123,7 @@ def plot_head_token_contribs(contribs, tokens, dst, start=0, end=None, model=Non
     )
 
     fig, ax = plt.subplots()
+    # fig = plt.figure(figsize=(contribs.shape))
     matimg = ax.matshow(contribs[0, :, dst, start:end].detach().cpu().numpy())
     ax.set_xticks(range(end - start))
     ax.set_xticklabels(token_strs, rotation=90)
@@ -154,10 +155,7 @@ def plot_attn_contribs_for_example(
         _, cache = model.run_with_cache(
             tokens,
             stop_at_layer=1,
-            names_filter=[
-                utils.get_act_name("pattern", 0),
-                utils.get_act_name("v", 0),
-            ],
+            names_filter=[utils.get_act_name("pattern", 0), utils.get_act_name("v", 0)],
         )
         if not ov_only:
             attn_contribs = get_attn_head_contribs(
@@ -165,9 +163,20 @@ def plot_attn_contribs_for_example(
             )
             attn_contribs_window = attn_contribs[0, :, token_idx, start_token_idx : token_idx + 1]
         else:
-            attn_contribs = get_attn_head_contribs_ov(model, cache, 0, feature_mid)
+            attn_contribs = get_attn_head_contribs_ov(
+                model=model, layer=layer, cache=cache, data=data, batch_size=batch_size, range_normal=feature_mid
+            )
             attn_contribs_window = attn_contribs[0, :, start_token_idx : token_idx + 1]
-        print(attn_contribs_window.sum().item())
+
+        # Matplotlib code
+        fig = plt.figure(figsize=(attn_contribs_window.shape[1] // 2, attn_contribs_window.shape[0] // 2))
+        plt.imshow(attn_contribs_window.detach().cpu().numpy())
+        plt.xticks(
+            range(token_idx - start_token_idx + 1),
+            [model.to_string(x) for x in tokens[start_token_idx : token_idx + 1]],
+            rotation=90,
+        )
+        # print(attn_contribs_window.sum().item())
         # fig = px.imshow(
         #     utils.to_numpy(attn_contribs_window),
         #     x=list(
@@ -180,23 +189,23 @@ def plot_attn_contribs_for_example(
         #     color_continuous_midpoint=0,
         # )
         # fig.update_xaxes(tickangle=90)
-        fig = go.Figure(
-            data=go.Heatmap(
-                z=utils.to_numpy(attn_contribs_window),
-                x=list(
-                    map(
-                        lambda x, i: f"|{process_token(x, model=model)}| pos {str(i)}",
-                        model.tokenizer.batch_decode(tokens[start_token_idx : token_idx + 1]),
-                        range(start_token_idx, token_idx + 1),
-                    )
-                ),
-                colorscale="rdbu",
-            )
-        )
-        fig.update_layout(
-            xaxis=dict(tickmode="array", tickvals=list(range(token_idx - start_token_idx + 1))),
-            height=300,
-            width=token_idx - start_token_idx + 1,
-        )
+        # fig = go.Figure(
+        #     data=go.Heatmap(
+        #         z=utils.to_numpy(attn_contribs_window),
+        #         x=list(
+        #             map(
+        #                 lambda x, i: f"|{process_token(x, model=model)}| pos {str(i)}",
+        #                 model.tokenizer.batch_decode(tokens[start_token_idx : token_idx + 1]),
+        #                 range(start_token_idx, token_idx + 1),
+        #             )
+        #         ),
+        #         colorscale="rdbu",
+        #     )
+        # )
+        # fig.update_layout(
+        #     xaxis=dict(tickmode="array", tickvals=list(range(token_idx - start_token_idx + 1))),
+        #     height=300,
+        #     width=token_idx - start_token_idx + 1,
+        # )
 
-        return fig
+        # return fig

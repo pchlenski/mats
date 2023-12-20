@@ -41,9 +41,10 @@ def get_attn_head_contribs(model, layer, range_normal, cache=None, data=None, ba
     return contribs
 
 
-def get_attn_head_contribs_ov(model, layer, range_normal, cache=None, data=None):
-    cache = _validate_cache(cache, data, model)
+def get_attn_head_contribs_ov(model, layer, range_normal, cache=None, data=None, batch_size=BATCH_SIZE, use_half=True):
+    cache = _validate_cache(cache, data, model, batch_size=batch_size)
     split_vals = cache[utils.get_act_name("v", layer)]
+    split_vals = split_vals.to(torch.float16) if use_half else split_vals
     # print(split_vals.shape)
 
     # 'batch src head d_head, head d_head d_model -> batch head src d_model'
