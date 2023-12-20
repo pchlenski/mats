@@ -9,24 +9,26 @@ import plotly.express as px
 from transformer_lens import utils
 
 from .feature_exploration import max_activating_examples
-from .loading import load_model
+from .loading import load_model, load_data
 from .sae_tutorial import process_tokens, process_token
 from .attention import get_attn_head_contribs
 from .vars import BATCH_SIZE
 
 
-def get_topk(feature_id, n_examples, model=None, pad=True, clip=None, evenly_spaced=False):
+def get_topk(feature_id, n_examples, model=None, data=None, pad=True, clip=None, evenly_spaced=False):
     if model is None:
         model = load_model()
+    if data is None:
+        data = load_data(model=model)
 
-    ex, val = max_activating_examples(feature_id, n_examples, return_feature_values=True, evenly_spaced=evenly_spaced)
+    ex, val, r, c = max_activating_examples(feature_id, n_examples, model=model, evenly_spaced=evenly_spaced)
 
     max_val_idx = val.argmax(dim=1)
     min_idx, max_idx = max_val_idx.min().item(), max_val_idx.max().item()
 
     if pad:
         ex_padded = []
-        vals_padded = []
+        val_padded = []
         for i in range(n_examples):
             row_max = max_val_idx[i].item()
             ex_padded.append(
@@ -38,7 +40,7 @@ def get_topk(feature_id, n_examples, model=None, pad=True, clip=None, evenly_spa
                     ]
                 )
             )
-            vals_padded.append(
+            val_padded.append(
                 torch.cat(
                     [
                         torch.zeros(max_idx - row_max, dtype=torch.int),
@@ -49,39 +51,43 @@ def get_topk(feature_id, n_examples, model=None, pad=True, clip=None, evenly_spa
             )
 
         ex = torch.stack(ex_padded)
-        vals = torch.stack(vals_padded)
+        val = torch.stack(val_padded)
 
         if clip is not None:
             ex = ex[:, max_idx - clip : max_idx + clip]
-            vals = vals[:, max_idx - clip : max_idx + clip]
+            val = val[:, max_idx - clip : max_idx + clip]
 
-    vals[ex < 2] = torch.nan
+    val[ex < 2] = torch.nan
 
     # Plot
-    df = pd.DataFrame([[model.tokenizer.decode(x) for x in row] for row in ex])
+    df = pd.DataFrame([[model.tokenizer.decode(x) for x in row] for row in ex], index=r.cpu().numpy())
+    val = pd.DataFrame(val, index=r.cpu().numpy())
 
-    return df, vals
+    return df, val, c
 
 
-def visualize_topk(feature_id, n_examples, model=None, pad=True, clip=None):
-    df, vals = get_topk(feature_id, n_examples, model=model, pad=pad, clip=clip)
+def visualize_topk(feature_id, n_examples, model=None, data=None, pad=True, clip=None, evenly_spaced=False):
+    df, val, c = get_topk(
+        feature_id, n_examples, model=model, data=data, pad=pad, clip=clip, evenly_spaced=evenly_spaced
+    )
     fig = plt.figure(figsize=(df.shape[1], df.shape[0]))
-    plt.imshow(vals, cmap="coolwarm", vmin=0)
-    plt.colorbar()
+    ax = fig.add_subplot(111)
+    ax.matshow(val, cmap="coolwarm", vmin=0)
 
-    for i, row in df.iterrows():
+    # for i, row in df.iterrows():
+    for i, (_, row) in enumerate(df.iterrows()):  # Hacky but I need indices
         for j, token in enumerate(row):
             if token not in ["<|EOS|>", "<|PAD|>", "<|BOS|>"]:
-                plt.text(j, i, token, ha="center", va="center")
+                plt.text(j, i, token, ha="center", va="center", fontsize=10)
 
-    plt.xticks(range(df.shape[1]))
-    plt.yticks(range(df.shape[0]))
-    plt.tight_layout()
-    return fig
+    ax.set_xticks(range(len(df.columns)), df.columns)
+    ax.set_yticks(range(len(df.index)), [f"R={dfi}, C={ci}" for dfi, ci in zip(df.index, c)])
+
+    return ax
 
 
-def visualize_topk_plotly(feature_id, n_examples, model=None, pad=True, clip=None):
-    df, vals = get_topk(feature_id, n_examples, model=model, pad=pad, clip=clip)
+def visualize_topk_plotly(feature_id, n_examples, model=None, data=None, pad=True, clip=None):
+    df, vals = get_topk(feature_id, n_examples, model=model, data=data, pad=pad, clip=clip)
 
     # Create Plotly figure
     fig = go.Figure(

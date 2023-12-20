@@ -9,9 +9,14 @@ from .vars import MODEL, RUN, DATASET
 
 
 def load_model(
-    model_name: str = MODEL, use_cuda: bool = True, half_precision: bool = True, verbose: bool = True, **kwargs
+    model_name: str = MODEL,
+    fold_ln=False,
+    use_cuda: bool = True,
+    half_precision: bool = True,
+    verbose: bool = True,
+    **kwargs,
 ) -> HookedTransformer:
-    model = HookedTransformer.from_pretrained(model_name)
+    model = HookedTransformer.from_pretrained(model_name, fold_ln=fold_ln)
     model = model.cuda() if use_cuda else model
     model = model.to(torch.float16) if half_precision else model
     print(f"Model device: {next(model.parameters()).device}") if verbose else None

@@ -43,6 +43,7 @@ def analyze_linearized_feature(
     data=None,
     batch_size=BATCH_SIZE,
     n_tokens=10,
+    encode="mid",  # "mlp_out"
 ):
     # Get cache
     if model is None:
@@ -52,9 +53,14 @@ def analyze_linearized_feature(
     if encoder is None:
         encoder = load_sae()
 
+    # Get batch start and end
+    idx_in_batch = sample_idx % batch_size
+    batch_start = sample_idx - (idx_in_batch)
+    batch_end = batch_start + batch_size
+
     # Get cache
     _, cache = model.run_with_cache(
-        data[:batch_size],
+        data[batch_start:batch_end],
         # stop_at_layer=1,
         names_filter=[
             utils.get_act_name("post", layer),
@@ -71,7 +77,7 @@ def analyze_linearized_feature(
     feature_domain = feature @ model.blocks[layer].mlp.W_out
 
     mid_acts = cache[utils.get_act_name("resid_mid", layer)]
-    x_mid = mid_acts[sample_idx, token_idx][None, None, :]
+    x_mid = mid_acts[idx_in_batch, token_idx][None, None, :]
     feature_mid = get_tangent_plane_at_point(
         x_mid, lambda x: ln2_mlp_until_post(x, model.blocks[layer].ln2, model.blocks[layer].mlp), feature
     )[0, 0]

@@ -5,9 +5,7 @@ from .vars import DD
 from .loading import load_model, load_data
 
 
-def max_activating_examples(
-    feature_id, n_examples, model=None, data=None, return_feature_values=False, evenly_spaced=False
-):
+def max_activating_examples(feature_id, n_examples, model=None, data=None, evenly_spaced=False):
     if model is None:
         model = load_model()
     if data is None:
@@ -18,8 +16,12 @@ def max_activating_examples(
 
     # Find the top n_examples examples that activate the feature the most
     if evenly_spaced:
-        features = features[features > 0]
-        idx = torch.argsort(features.flatten())
+        idx = torch.argsort(features.flatten(), descending=True)
+        # Filter down to nonzero
+        idx = idx[features.flatten()[idx] > 0]
+        # Uniformly space out indices
+        spacing = max(1, len(idx) // n_examples)
+        idx = idx[::spacing][:n_examples]
     else:
         idx = torch.topk(features.flatten(), n_examples, dim=0).indices
 
@@ -28,7 +30,6 @@ def max_activating_examples(
     r = idx // n
     c = idx % n
 
-    if return_feature_values:
-        return data[r], features[r]
-    else:
-        return data[r]
+    out = data[r]
+
+    return out, features[r], r, c
