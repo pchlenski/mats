@@ -16,11 +16,18 @@ def get_tangent_plane_at_point(x_0_new, f, range_normal):
     return grad[0]
 
 
-def ln2_mlp_until_post(x, ln, mlp):
-    x = ln(x)
+def ln2_mlp_until_post(x, ln, mlp, use_ln=True):
+    if use_ln:
+        x = ln(x)
     x = x @ mlp.W_in + mlp.b_in
     x = mlp.act_fn(x)
     return x
+
+
+def ln2_mlp_until_out(x, ln, mlp, use_ln=True):
+    if use_ln:
+        x = ln(x)
+    return mlp(x)
 
 
 def ln_ov(x, model, layer, head):
@@ -121,3 +128,16 @@ def analyze_linearized_feature(
         "QK token scores": qk_token_scores,
         "QK token strings": qk_token_strs,
     }
+
+
+def get_feature_mid(data, feature_token_idx, feature_post, model=None, use_ln=True, layer=0, mlp_out=True):
+    with torch.no_grad():
+        _, cache = model.run_with_cache(data, names_filter=[utils.get_act_name("resid_mid", layer)])
+    mid_acts = cache[utils.get_act_name("resid_mid", layer)]
+    x_mid = mid_acts[0, feature_token_idx][None, None, :]
+
+    my_fun = ln2_mlp_until_post if not mlp_out else ln2_mlp_until_out
+    feature_mid = get_tangent_plane_at_point(
+        x_mid, lambda x: my_fun(x, model.blocks[layer].ln2, model.blocks[layer].mlp, use_ln=use_ln), feature_post
+    )[0, 0]
+    return feature_mid

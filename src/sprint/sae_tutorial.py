@@ -99,6 +99,7 @@ class AutoEncoder(nn.Module):
         elif version == "l1":
             hf_id = "gelu-2l_L1_16384_mlp_out_50"
 
+        print(f"Loading {version} from HuggingFace at {hf_id}")
         cfg = utils.download_file_from_hf("NeelNanda/sparse_autoencoder", f"{hf_id}_cfg.json")
         if version in ["l0", "l1"]:
             cfg["d_mlp"] = 512  # This was not encoded for some reason
@@ -159,7 +160,7 @@ def get_recons_loss(all_tokens, model, num_batches=5, local_encoder=None):
 
 # Get frequency
 @torch.no_grad()
-def get_freqs(all_tokens, model, num_batches=25, local_encoder=None):
+def get_freqs(all_tokens, model, act_name="post", layer=0, num_batches=25, local_encoder=None):
     if local_encoder is None:
         local_encoder = encoder
     act_freq_scores = torch.zeros(local_encoder.d_hidden, dtype=torch.float32).cuda()
@@ -167,9 +168,9 @@ def get_freqs(all_tokens, model, num_batches=25, local_encoder=None):
     for i in tqdm.trange(num_batches):
         tokens = all_tokens[torch.randperm(len(all_tokens))[: cfg["model_batch_size"]]]
 
-        _, cache = model.run_with_cache(tokens, stop_at_layer=1, names_filter=utils.get_act_name("post", 0))
-        mlp_acts = cache[utils.get_act_name("post", 0)]
-        mlp_acts = mlp_acts.reshape(-1, cfg["d_mlp"])
+        _, cache = model.run_with_cache(tokens, names_filter=utils.get_act_name(act_name, layer))
+        mlp_acts = cache[utils.get_act_name(act_name, layer)]
+        mlp_acts = mlp_acts.reshape(-1, local_encoder.W_enc.shape[0])
 
         hidden = local_encoder(mlp_acts)[2]
 

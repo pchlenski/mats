@@ -10,7 +10,8 @@ from .vars import MODEL, RUN, DATASET
 
 def load_model(
     model_name: str = MODEL,
-    fold_ln=False,
+    # fold_ln=False,
+    fold_ln: bool = True,
     use_cuda: bool = True,
     half_precision: bool = True,
     verbose: bool = True,

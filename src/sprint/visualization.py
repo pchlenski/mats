@@ -209,3 +209,31 @@ def plot_attn_contribs_for_example(
         # )
 
         # return fig
+
+
+def plot_attn_pattern_for_example(model, data, example_idx, token_idx, start_token_idx=0, layer=0):
+    with torch.no_grad():
+        # tokens = all_tokens[example_idx]
+        _, cache = model.run_with_cache(
+            # tokens,
+            data,
+            stop_at_layer=1,
+            names_filter=[
+                utils.get_act_name("pattern", layer),
+            ],
+        )
+        fig = px.imshow(
+            utils.to_numpy(
+                cache[utils.get_act_name("pattern", layer)][0, :, token_idx, start_token_idx : token_idx + 1]
+            ),
+            x=list(
+                map(
+                    lambda x, i: f"|{process_token(x)}| pos {str(i)}",
+                    model.tokenizer.batch_decode(tokens[start_token_idx : token_idx + 1]),
+                    range(start_token_idx, token_idx + 1),
+                )
+            ),
+            color_continuous_midpoint=0,
+        )
+        fig.update_xaxes(tickangle=90)
+    fig.show()

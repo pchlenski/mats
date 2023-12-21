@@ -54,3 +54,19 @@ def get_attn_head_contribs_ov(model, layer, range_normal, cache=None, data=None,
     contribs = torch.einsum("b h s m, m -> b h s", weighted_outs, range_normal)
 
     return contribs
+
+
+def do_single_token_qk(dst_token_str, src_token_str, head, dst_pos=40, src_pos=40, model=None):
+    max_pos_list = []
+    query = model.W_E[model.to_single_token(dst_token_str)] + model.W_pos[dst_pos]
+    query = model.blocks[0].ln1(query)
+    query = query @ model.blocks[0].attn.W_Q[head]
+    query = query + model.blocks[0].attn.b_Q[head]
+
+    key = model.W_pos[src_pos] + model.W_E[model.to_single_token(src_token_str)]
+    key = model.blocks[0].ln1(key)
+    key = key @ model.blocks[0].attn.W_K[head]
+    key = key + model.blocks[0].attn.b_K[head]
+
+    test_qk = query @ key.T
+    return test_qk.item()
