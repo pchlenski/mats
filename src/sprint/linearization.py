@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import torch
 from transformer_lens import utils
 from .loading import load_model, load_sae, load_data
@@ -5,11 +6,12 @@ from .vars import SAE_CFG, BATCH_SIZE
 
 
 def cossim(a, b):
+    """Take the cosine similarity between two vectors - usually for reverse-engineered features"""
     return (torch.dot(a, b) / (torch.linalg.norm(a) * torch.linalg.norm(b))).item()
 
 
 def get_tangent_plane_at_point(x_0_new, f, range_normal):
-    # now, find the tangent hyperplane at x_0_new
+    """Linear approximation of f at x_0_new"""
     x_0_new.requires_grad_(True)
     g = lambda x: f(x) @ range_normal
     grad = torch.autograd.grad(g(x_0_new), x_0_new)
@@ -17,6 +19,7 @@ def get_tangent_plane_at_point(x_0_new, f, range_normal):
 
 
 def ln2_mlp_until_post(x, ln, mlp, use_ln=True):
+    """Get MLP activations for x"""
     if use_ln:
         x = ln(x)
     x = x @ mlp.W_in + mlp.b_in
@@ -25,18 +28,57 @@ def ln2_mlp_until_post(x, ln, mlp, use_ln=True):
 
 
 def ln2_mlp_until_out(x, ln, mlp, use_ln=True):
+    """Get MLP outputs for x"""
     if use_ln:
         x = ln(x)
     return mlp(x)
 
 
 def ln_ov(x, model, layer, head):
+    """Run the OV circuit on x"""
     return model.blocks[layer].ln1(x) @ model.OV[layer, head]
 
 
 def get_top_tokens(tokenizer, vector, k=5, reverse=False):
+    """Get the top k tokens for a vector"""
     topk = torch.topk(vector, k=k, largest=(not reverse))
     return topk.values, tokenizer.batch_decode([[x] for x in topk.indices])
+
+
+def get_feature_activations(model, feature_idx, data, n_batches, batch_size, encoder, layer=0):
+    with torch.no_grad():
+        tokens = data[: batch_size * n_batches]
+        hidden_acts = []
+        for batch in tqdm(tokens.split(batch_size)):
+            _, cache = model.run_with_cache(
+                batch,
+                stop_at_layer=1,
+                names_filter=[
+                    utils.get_act_name("post", 0),
+                    utils.get_act_name("resid_mid", 0),
+                    utils.get_act_name("attn_scores", 0),
+                ],
+            )
+            mlp_acts = cache[utils.get_act_name("post", 0)]
+            mlp_acts_flattened = mlp_acts.reshape(-1, SAE_CFG["d_mlp"])
+            loss, x_reconstruct, hidden_acts_batch, l2_loss, l1_loss = encoder(mlp_acts_flattened)
+            hidden_acts.append(hidden_acts_batch)
+            # This is equivalent to:
+            # hidden_acts = F.relu((mlp_acts_flattened - encoder.b_dec) @ encoder.W_enc + encoder.b_enc)
+
+        hidden_acts = torch.cat(hidden_acts, dim=0)[feature_idx]
+        feature = encoder.W_enc[:, feature_idx]
+
+        mid_acts = cache[utils.get_act_name("resid_mid", layer)]
+        x_mid = mid_acts[0, token_idx][None, None, :]
+        my_fun = ln2_mlp_until_post if not mlp_out else ln2_mlp_until_out
+        feature_mid = get_tangent_plane_at_point(
+            x_mid, lambda x: my_fun(x, model.blocks[layer].ln2, model.blocks[layer].mlp, use_ln=use_ln), feature
+        )[0, 0]
+
+        mid_acts_feature_scores = mid_acts.reshape(-1, model.cfg.d_model) @ feature_mid
+
+        return {"hidden acts": hidden_acts, "mid acts feature scores": mid_acts_feature_scores}
 
 
 def analyze_linearized_feature(
@@ -48,10 +90,15 @@ def analyze_linearized_feature(
     model=None,
     encoder=None,
     data=None,
-    batch_size=BATCH_SIZE,
+    # batch_size=BATCH_SIZE,
     n_tokens=10,
-    encode="mid",  # "mlp_out"
+    mlp_out=False,
+    use_ln=True,
+    feature=None,
 ):
+    """
+    Analyzes a whole feature example using linearizations.
+    """
     # Get cache
     if model is None:
         model = load_model()
@@ -60,14 +107,10 @@ def analyze_linearized_feature(
     if encoder is None:
         encoder = load_sae()
 
-    # Get batch start and end
-    idx_in_batch = sample_idx % batch_size
-    batch_start = sample_idx - (idx_in_batch)
-    batch_end = batch_start + batch_size
-
     # Get cache
     _, cache = model.run_with_cache(
-        data[batch_start:batch_end],
+        # data[batch_start:batch_end],
+        data[sample_idx],
         # stop_at_layer=1,
         names_filter=[
             utils.get_act_name("post", layer),
@@ -75,18 +118,22 @@ def analyze_linearized_feature(
             utils.get_act_name("attn_scores", layer),
         ],
     )
-    mlp_acts = cache[utils.get_act_name("post", layer)]
-    mlp_acts_flattened = mlp_acts.reshape(-1, SAE_CFG["d_mlp"])
-    _, _, hidden_acts, _, _ = encoder(mlp_acts_flattened)
+    mlp_acts_flattened = cache[utils.get_act_name("post", layer)].reshape(-1, SAE_CFG["d_mlp"])
+    mlp_out_flattened = cache[utils.get_act_name("resid_mid", layer)].reshape(-1, SAE_CFG["d_mlp"] // 4)
+    _, _, hidden_acts, _, _ = encoder(mlp_out_flattened) if mlp_out else encoder(mlp_acts_flattened)
+
+    # Tweaks to feature vectors
+    if feature is None:
+        feature = encoder.W_enc[:, feature_idx]
+    if mlp_out:
+        feature = feature @ model.blocks[layer].mlp.W_out
 
     # Linearization component
-    feature = encoder.W_enc[:, feature_idx]
-    feature_domain = feature @ model.blocks[layer].mlp.W_out
-
     mid_acts = cache[utils.get_act_name("resid_mid", layer)]
-    x_mid = mid_acts[idx_in_batch, token_idx][None, None, :]
+    x_mid = mid_acts[0, token_idx][None, None, :]
+    my_fun = ln2_mlp_until_post if not mlp_out else ln2_mlp_until_out
     feature_mid = get_tangent_plane_at_point(
-        x_mid, lambda x: ln2_mlp_until_post(x, model.blocks[layer].ln2, model.blocks[layer].mlp), feature
+        x_mid, lambda x: my_fun(x, model.blocks[layer].ln2, model.blocks[layer].mlp, use_ln=use_ln), feature
     )[0, 0]
 
     mid_acts_feature_scores = mid_acts.reshape(-1, model.cfg.d_model) @ feature_mid
@@ -100,8 +147,9 @@ def analyze_linearized_feature(
     ov_token_scores, ov_token_strs = get_top_tokens(model.tokenizer, ov_feature_head_unembed, k=n_tokens)
 
     # ln_OV
+    # We use the token to index into the embedding matrix!
     ln_ov_feature_head_unembed = get_tangent_plane_at_point(
-        model.W_E[model.to_single_token("('")], lambda x: ln_ov(x, model, layer, head), feature_mid
+        model.W_E[data[sample_idx, token_idx].item()], lambda x: ln_ov(x, model, layer, head), feature_mid
     )
     ln_ov_token_scores, ln_ov_token_strs = get_top_tokens(model.tokenizer, ln_ov_feature_head_unembed, k=n_tokens)
 
@@ -112,7 +160,6 @@ def analyze_linearized_feature(
     return {
         "feature": feature,
         "sae activations": hidden_acts,
-        "domain": feature_domain,
         "mid": feature_mid,
         "activation scores": mid_acts_feature_scores,
         "tokens": feature_unembed,
@@ -130,14 +177,57 @@ def analyze_linearized_feature(
     }
 
 
-def get_feature_mid(data, feature_token_idx, feature_post, model=None, use_ln=True, layer=0, mlp_out=True):
-    with torch.no_grad():
-        _, cache = model.run_with_cache(data, names_filter=[utils.get_act_name("resid_mid", layer)])
-    mid_acts = cache[utils.get_act_name("resid_mid", layer)]
-    x_mid = mid_acts[0, feature_token_idx][None, None, :]
+def get_feature_mid(
+    data,
+    sample_idx,
+    feature_token_idx,
+    feature_idx,
+    use_ln=True,
+    layer=0,
+    mlp_out=True,
+    model=None,
+    encoder=None,
+    feature=None,
+):
+    """Convenience function since we pull out this activation a lot"""
+    return analyze_linearized_feature(
+        feature_idx,
+        sample_idx,
+        feature_token_idx,
+        layer=layer,
+        model=model,
+        data=data,
+        mlp_out=mlp_out,
+        use_ln=use_ln,
+        encoder=encoder,
+        feature=feature,
+    )["mid"]
 
-    my_fun = ln2_mlp_until_post if not mlp_out else ln2_mlp_until_out
-    feature_mid = get_tangent_plane_at_point(
-        x_mid, lambda x: my_fun(x, model.blocks[layer].ln2, model.blocks[layer].mlp, use_ln=use_ln), feature_post
-    )[0, 0]
-    return feature_mid
+
+# def get_feature_mid_jacob(all_tokens, feature_example_idx, feature_token_idx, feature_post, use_ln=True, layer=0, mlp_out=True, model=None, encoder=None):
+#     with torch.no_grad():
+#         _, cache = model.run_with_cache(all_tokens[feature_example_idx], names_filter=[
+#           utils.get_act_name("resid_mid", layer)
+#         ])
+#     mid_acts = cache[utils.get_act_name("resid_mid", layer)]
+#     x_mid = mid_acts[0, feature_token_idx][None, None, :]
+
+#     my_fun = (ln2_mlp_until_post if not mlp_out else ln2_mlp_until_out)
+#     feature_mid = get_tangent_plane_at_point(x_mid,
+#         lambda x: my_fun(x, model.blocks[layer].ln2, model.blocks[layer].mlp, use_ln=use_ln),
+#         feature_post
+#     )[0,0]
+#     return feature_mid
+
+
+# with torch.no_grad():
+#     _, cache = model.run_with_cache(data, names_filter=[utils.get_act_name("resid_mid", layer)])
+# mid_acts = cache[utils.get_act_name("resid_mid", layer)]
+# x_mid = mid_acts[0, feature_token_idx][None, None, :]
+
+# my_fun = ln2_mlp_until_post if not mlp_out else ln2_mlp_until_out
+# feature_mid = get_tangent_plane_at_point(
+#     x_mid, lambda x: my_fun(x, model.blocks[layer].ln2, model.blocks[layer].mlp, use_ln=use_ln), feature_post
+# )[0, 0]
+# return feature_mid
+# result = analyze_linearized_feature(

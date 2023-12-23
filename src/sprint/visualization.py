@@ -118,14 +118,11 @@ def plot_head_token_contribs(contribs, tokens, dst, start=0, end=None, model=Non
         end = len(tokens)
     if end < 0:
         end = len(tokens) + end
-    token_strs = list(
-        map(lambda x: f"|{x}|", process_tokens(model.tokenizer.batch_decode(tokens)[start:end], model=model))
-    )
 
     fig, ax = plt.subplots()
     # fig = plt.figure(figsize=(contribs.shape))
-    matimg = ax.matshow(contribs[0, :, dst, start:end].detach().cpu().numpy())
-    ax.set_xticks(range(end - start))
+    matimg = ax.matshow(contribs[0, :, dst, start : dst + 1].detach().cpu().numpy())
+    ax.set_xticks(range(dst - start + 1), [model.to_string(x) for x in tokens[start : end + 1]], rotation=90)
     ax.set_xticklabels(token_strs, rotation=90)
     fig.colorbar(matimg)
     plt.show()

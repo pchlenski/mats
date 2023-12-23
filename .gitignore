@@ -1,6 +1,7 @@
 # PAC additions
 *.pt
 .vscode/
+notebooks/iframe_figures/
 
 
 # Byte-compiled / optimized / DLL files
