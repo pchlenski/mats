@@ -1,5 +1,6 @@
-# mats-sprint
+# mats
 SERI MATS research sprint
++ Research phase!
 
 Code to generate environment:
 ```bash
