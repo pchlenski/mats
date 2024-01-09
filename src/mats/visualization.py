@@ -1,4 +1,4 @@
-from sprint.vars import BATCH_SIZE
+from mats.vars import BATCH_SIZE
 import torch
 import pandas as pd
 import matplotlib.pyplot as plt

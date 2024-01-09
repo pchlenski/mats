@@ -45,7 +45,7 @@ def get_top_tokens(tokenizer, vector, k=5, reverse=False):
     return topk.values, tokenizer.batch_decode([[x] for x in topk.indices])
 
 
-def get_feature_activations(model, feature_idx, data, n_batches, batch_size, encoder, layer=0):
+def get_feature_activations(model, feature_idx, token_idx, data, n_batches, batch_size, encoder, mlp_out=False, use_ln=False, layer=0):
     with torch.no_grad():
         tokens = data[: batch_size * n_batches]
         hidden_acts = []
@@ -125,8 +125,8 @@ def analyze_linearized_feature(
     # Tweaks to feature vectors
     if feature is None:
         feature = encoder.W_enc[:, feature_idx]
-    if mlp_out:
-        feature = feature @ model.blocks[layer].mlp.W_out
+    # if mlp_out:
+    #     feature = feature @ model.blocks[layer].mlp.W_out
 
     # Linearization component
     mid_acts = cache[utils.get_act_name("resid_mid", layer)]

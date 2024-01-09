@@ -10,6 +10,7 @@ pip3 install torch torchvision torchaudio
 pip install transformer_lens transformers circuitsvis
 pip install matplotlib plotly networkx tqdm 
 pip install pytest gradio
+pip install pandas
 pip install -e .
 ```
 
