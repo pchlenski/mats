@@ -45,7 +45,9 @@ def get_top_tokens(tokenizer, vector, k=5, reverse=False):
     return topk.values, tokenizer.batch_decode([[x] for x in topk.indices])
 
 
-def get_feature_activations(model, feature_idx, token_idx, data, n_batches, batch_size, encoder, mlp_out=False, use_ln=False, layer=0):
+def get_feature_activations(
+    model, feature_idx, token_idx, data, n_batches, batch_size, encoder, mlp_out=False, use_ln=False, layer=0
+):
     with torch.no_grad():
         tokens = data[: batch_size * n_batches]
         hidden_acts = []
@@ -121,12 +123,13 @@ def analyze_linearized_feature(
     mlp_acts_flattened = cache[utils.get_act_name("post", layer)].reshape(-1, SAE_CFG["d_mlp"])
     mlp_out_flattened = cache[utils.get_act_name("resid_mid", layer)].reshape(-1, SAE_CFG["d_mlp"] // 4)
     _, _, hidden_acts, _, _ = encoder(mlp_out_flattened) if mlp_out else encoder(mlp_acts_flattened)
+    # _, _, hidden_acts, _, _ = encoder(mlp_acts_flattened) if mlp_out else encoder(mlp_out_flattened)
 
     # Tweaks to feature vectors
     if feature is None:
         feature = encoder.W_enc[:, feature_idx]
-    # if mlp_out:
-    #     feature = feature @ model.blocks[layer].mlp.W_out
+    if mlp_out:
+        feature = feature @ model.blocks[layer].mlp.W_out
 
     # Linearization component
     mid_acts = cache[utils.get_act_name("resid_mid", layer)]

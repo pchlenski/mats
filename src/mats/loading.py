@@ -51,7 +51,7 @@ def load_sae(
 ) -> AutoEncoder:
     encoder = AutoEncoder.load_from_hf(run_id)
     encoder = encoder.cuda() if use_cuda else encoder
-    model = encoder.to(torch.float16) if half_precision else model
+    encoder = encoder.to(torch.float16) if half_precision else encoder
     print(f"Encoder device: {next(encoder.parameters()).device}") if verbose else None
     return encoder
 
