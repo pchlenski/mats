@@ -79,6 +79,8 @@ class AutoEncoder(nn.Module):
     #     self = cls(cfg=cfg)
     #     self.load_state_dict(torch.load(SAVE_DIR/(str(version)+".pt")))
     #     return self
+    
+
 
     @classmethod
     def load_from_hf(cls, version):
